@@ -1,4 +1,4 @@
-# Flibusta library
+# Flibusta library crawler
 - Асинхронная библиотека для работы с сайтом флибуста.
 - Поддерживает подключение к прокси onion. 
 - Скачивает и сохраняет книги в указанную папку.
@@ -13,7 +13,11 @@ async def main():
         for book in books: # Перебираем все найденные 
             print(f"Название {book.name}") # Выводим в консоль название книги
             download_b = await book.download_book() #Скачиваем книгу в дефолтную папку - downloads
-            print(download_b[1]) #Получаем размер скачанного файла и выводим в консоль
+            print(f"Размер файла {download_b[1]}") #Получаем размер скачанного файла и выводим в консоль
+            await book.get_full_info() # Получаем информацию по книге (при необходимости)
+            print(
+                f"{book.name} --- {book.description} ---- {book.cover_image} ---- {book.formats_available_for_download} --- {book.cover_image}"
+            ) # теперь у нас есть вся необходимая информация по книге
         print(len(books)) #Кол-во найденных книг
 
 

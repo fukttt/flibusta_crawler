@@ -1,7 +1,7 @@
 # Класс работы с сайтом Flibusta
 # написан исключительно в целях обучения написания библиотек
 #
-import logging, sys, os
+import logging, sys, os, re
 import asyncio, aiohttp, aiofiles
 from aiohttp_socks import ProxyType, ProxyConnector, ChainProxyConnector
 from bs4 import BeautifulSoup
@@ -10,14 +10,14 @@ from bs4 import BeautifulSoup
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 
-class Flibusta_book:
+class Flibusta_Book:
     """
     Класс книги.\n
     Содержит в себе название, автора, линк на скачивание и линк на автора.\n
     Так же есть функция для скачивания определенной в нужную папку.
     """
 
-    __type = "Flibusta_book"
+    __type = "Flibusta_Book"
 
     def __init__(
         self,
@@ -27,6 +27,7 @@ class Flibusta_book:
         author_link: str,
         proxy_host: str,
         proxy_port: int,
+        busta_url: str,
     ):
         self.author = author
         self.name = name
@@ -34,6 +35,10 @@ class Flibusta_book:
         self.author_link = author_link
         self.host = proxy_host
         self.port = proxy_port
+        self.busta_url = busta_url
+        self.cover_image = ""
+        self.formats_available_for_download = []
+        self.description = ""
 
     def get_tor_session(self) -> aiohttp.ClientSession:
         """
@@ -64,7 +69,7 @@ class Flibusta_book:
         Скачивает книгу в указанную папку.
         Скачивает формат, который есть, выборки по типу файла нет - думаю это лишнее.
         Для получения возможных форматов надо делать отдельный реквест - это время и ресурсы, поэтому качает первое попавшееся.
-        :param path - папка куда скачивать файл (default `./downloads/`)
+        :param path - папка куда скачивать файл (default `./downloads/` ЗЫ: на винде вроде иначе, но это не точно)
         :return [filename, size] | False
         """
         try:
@@ -87,6 +92,106 @@ class Flibusta_book:
                             self.GetHumanReadable(os.path.getsize(file_path)),
                         ]
         except:
+            return False
+
+    async def get_full_info(self):
+        """
+        Получает дополнительную информацию о книге.
+        Такую как: картинка, описание и дату.
+        """
+        # Список всех возможных форматов
+        # Используется для парсинга ссылки и получения всех
+        # возможных форматов для скачивания
+        available_formats = [
+            "fb2",
+            "pdf",
+            "djvu",
+            "doc",
+            "html",
+            "epub",
+            "chm",
+            "rtf",
+            "txt",
+            "exe",
+            "docx",
+            "pdb",
+            "rgo",
+            "lrf",
+            "mht",
+            "jpg",
+            "mhtm",
+            "dic",
+            "mobi",
+            "xml",
+            "htm",
+            "azw",
+            "png",
+            "odt",
+            "tex",
+            "azw3",
+            "dat",
+            "mp3",
+            "cbr",
+            "7zip",
+            "djv",
+            "word",
+            "prc",
+            "pdg",
+            "wri",
+            "gdoc",
+            "phf",
+            "НТМl",
+            "jpeg",
+            "zip",
+            "docs",
+            "txr",
+            "bqt",
+            "fb",
+            "2012",
+            "gif",
+            "djwu",
+            "sm",
+            "7z",
+        ]
+        try:
+            cover = ""
+            description = ""
+            formats = []
+            headers = {
+                "Accept": "*/*",
+                "User-Agent": "py/flibusta-crawler",
+            }
+            async with self.get_tor_session() as session:
+                async with session.get(
+                    f"{self.download}", headers=headers, allow_redirects=False
+                ) as resp:
+                    resp_text = await resp.text()
+                    soup = BeautifulSoup(resp_text, "html.parser")
+                    if (
+                        len(soup.find(id="main").find_all("p")) > 1
+                    ):  # Проверка есть ли описание
+                        description_p = soup.find(id="main").find_all("p")[1]
+                        description = soup.find(id="main").find_all("p")[1].get_text()
+                        if description_p.find("img"):
+                            cover = description_p.find("img")["src"]
+                    if soup.find("img", alt="Cover image"):
+                        cover = f"{self.busta_url}{soup.find('img', alt='Cover image')['src']}"
+                    search_formats = soup.find_all("a")
+                    for el in search_formats:
+                        if any(f"{ele})" in el.get_text() for ele in available_formats):
+                            formats.append(
+                                el.get_text()
+                                .replace(")", "")
+                                .replace("(", "")
+                                .replace("скачать ", "")
+                                .replace(" ", "")
+                            )
+                    self.cover_image = cover
+                    self.description = description
+                    self.formats_available_for_download = formats
+
+        except Exception as e:
+            logging.error(f"ebati {str(e)}")
             return False
 
 
@@ -140,23 +245,26 @@ class Flibusta:
         session = aiohttp.ClientSession(connector=connector)
         return session
 
-    async def search_for_books(self, query: str, limit: int = 5) -> list[Flibusta_book]:
+    async def search_for_books(self, query: str, limit: int = 5) -> list[Flibusta_Book]:
         """
         Поиск книг по названию и автору.
         :param query - Поисковой запрос.
         :param limit - Лимит по результатам. (default `5`)
-        :return: `list[Flibusta_book]`
+        :return: `list[Flibusta_Book]`
         """
         books = []
         try:
             async with self.get_tor_session() as session:
                 async with session.get(
-                    f"{self.url}/booksearch?ask={query}",
+                    f"{self.url}/booksearch?ask={query}&chb=on",
                     headers=self.headers,
                 ) as req:
                     resp_text = await req.text()
                     soup = BeautifulSoup(resp_text, "html.parser")
-                    ul = soup.find(id="main").find_all("ul")[2].find_all("li")
+                    ul = (
+                        soup.find(id="main").find("ul", {"class": ""}).find_all("li")
+                    )  # Ищет ul без класса. С классом pager - пагинация.
+
                     counter = 0
                     for el in ul:
                         if counter >= limit:
@@ -172,13 +280,14 @@ class Flibusta:
                             author = el.find_all("a")[1].get_text()
                             author_link = el.find_all("a")[1]["href"]
 
-                        book = Flibusta_book(
+                        book = Flibusta_Book(
                             author=author,
                             name=name,
                             download_link=f"{self.url}{download}",
                             author_link=f"{self.url}{author_link}",
                             proxy_host=self.proxy_host,
                             proxy_port=self.proxy_port,
+                            busta_url=self.url,
                         )
                         books.append(book)
                         counter += 1
@@ -196,11 +305,14 @@ async def main():
     # Все настройки можно менять
     ff = Flibusta(9052, "127.0.0.1")
     if await ff.check_connection():
-        books = await ff.search_for_books(query="Python")
+        books = await ff.search_for_books(query="Обломов", limit=5)
         for book in books:
-            print(f"{book.name}   --- {book.download}")
-            download_b = await book.download_book()
-            print(download_b[1])
+            download_b = await book.get_full_info()
+            print(
+                f"Название {book.name} ---- {book.formats_available_for_download} --- {book.cover_image}"
+            )
+            # print(download_b)
+            # print(f"Размер файла {download_b[1]}")
         print(len(books))
 
 
