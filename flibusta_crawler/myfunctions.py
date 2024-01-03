@@ -2,7 +2,7 @@
 # написан исключительно в целях обучения написания библиотек
 #
 import logging, sys
-import asyncio, aiohttp
+import asyncio, aiohttp, aiofiles
 from aiohttp_socks import ProxyType, ProxyConnector, ChainProxyConnector
 from bs4 import BeautifulSoup
 
@@ -18,6 +18,11 @@ class Flibusta_book:
         self.name = name
         self.download = download_link
         self.author_link = author_link
+
+    def download_book(self, path: str = "."):
+        f = await aiofiles.open('./downloads/', mode='wb')
+            await f.write(await resp.read())
+            await f.close()
 
 
 class Flibusta:
@@ -71,9 +76,12 @@ class Flibusta:
         session = aiohttp.ClientSession(connector=connector)
         return session
 
-    async def search_for_books(self, query: str) -> list[Flibusta_book]:
+    async def search_for_books(self, query: str, limit: int = 5) -> list[Flibusta_book]:
         """
-        Поиск
+        Поиск книг по названию и автору.
+        :param query - Поисковой запрос.
+        :param limit - Лимит по результатам. (default `5`)
+        :return: `list[Flibusta_book]`
         """
         books = []
         try:
@@ -85,23 +93,34 @@ class Flibusta:
                 resp_text = await req.text()
                 soup = BeautifulSoup(resp_text, "html.parser")
                 ul = soup.find(id="main").find_all("ul")[2].find_all("li")
+                counter = 0
                 for el in ul:
-                    if el:
-                        book = Flibusta_book(
-                            author=el.find_all("a")[1].get_text(),
-                            name=el.find_all("a")[0].get_text(),
-                            download_link=el.find_all("a")[0]["href"],
-                            author_link=el.find_all("a")[1]["href"],
-                        )
-                        books.append(book)
-        except IndexError:
-            # Пассим ошибку, если где-то не хватает автора или названия.
-            # Пока без понятия как ловить умнее )
-            pass
+                    if counter >= limit:
+                        break
+                    author = ""
+                    author_link = ""
+
+                    name = el.find_all("a")[0].get_text()
+                    download = el.find_all("a")[0]["href"]
+
+                    # Где-то нет автора. Поэтому проходим дополнительным условием.
+                    if len(el.find_all("a")) > 1:
+                        author = el.find_all("a")[1].get_text()
+                        author_link = el.find_all("a")[1]["href"]
+
+                    book = Flibusta_book(
+                        author=author,
+                        name=name,
+                        download_link=f"{self.url}{download}",
+                        author_link=f"{self.url}{author_link}",
+                    )
+                    books.append(book)
+                    counter += 1
+
         except aiohttp.ClientConnectorError as e:
-            logging.error(f"aiohttp ClientConnectorError {str(e)}")
+            logging.error(f"aiohttp ClientConnectorError: {str(e)}")
         except Exception as e:
-            logging.error(f"Some other error {str(e)}")
+            logging.error(f"Some other error: {str(e)}")
 
         return books
 
@@ -111,7 +130,7 @@ async def main():
     if await ff.check_connection():
         books = await ff.search_for_books(query="Python")
         for book in books:
-            print(book.name)
+            print(f"{book.name}   --- {book.download}")
         print(len(books))
 
 
