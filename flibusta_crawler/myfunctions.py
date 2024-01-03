@@ -72,6 +72,9 @@ class Flibusta:
         return session
 
     async def search_for_books(self, query: str) -> list[Flibusta_book]:
+        """
+        Поиск
+        """
         books = []
         try:
             async with self.get_tor_session() as session:
