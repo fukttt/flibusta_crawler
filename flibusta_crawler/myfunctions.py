@@ -11,6 +11,12 @@ logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 
 class Flibusta_book:
+    """
+    Класс книги.\n
+    Содержит в себе название, автора, линк на скачивание и линк на автора.\n
+    Так же есть функция для скачивания определенной в нужную папку.
+    """
+
     __type = "Flibusta_book"
 
     def __init__(
@@ -56,6 +62,8 @@ class Flibusta_book:
     async def download_book(self, path: str = "./downloads/") -> list[str] | bool:
         """
         Скачивает книгу в указанную папку.
+        Скачивает формат, который есть, выборки по типу файла нет - думаю это лишнее.
+        Для получения возможных форматов надо делать отдельный реквест - это время и ресурсы, поэтому качает первое попавшееся.
         :param path - папка куда скачивать файл (default `./downloads/`)
         :return [filename, size] | False
         """
@@ -184,6 +192,8 @@ class Flibusta:
 
 
 async def main():
+    # Пример использования
+    # Все настройки можно менять
     ff = Flibusta(9052, "127.0.0.1")
     if await ff.check_connection():
         books = await ff.search_for_books(query="Python")
